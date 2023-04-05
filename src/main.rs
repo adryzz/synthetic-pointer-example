@@ -1,14 +1,17 @@
 use std::{
     any,
     io::Read,
-    net::{Shutdown, TcpListener, TcpStream},
+    net::{Shutdown, TcpListener, TcpStream}, fs::read,
 };
 
+use capnp::serialize_packed;
 use serde::{Deserialize, Serialize};
 use win32_synthetic_pointer::{
     PointerType::{self, Mouse},
     SyntheticPointer, TouchInput, TouchProperties,
 };
+
+use crate::touch_data_capnp::touch_data;
 
 fn main() -> anyhow::Result<()> {
     let addr = "0.0.0.0:1337";
@@ -76,45 +79,33 @@ fn map(value: f32, istart: f32, istop: f32, ostart: f32, ostop: f32) -> f32 {
     return ostart + (ostop - ostart) * ((value - istart) / (istop - istart));
 }
 
-fn touch_data_from_slice(buf: &[u8; 512]) -> Result<TouchData, anyhow::Error> {
+fn touch_data_from_slice(buf: &[u8]) -> Result<TouchData, anyhow::Error> {
+    let message_reader =
+        serialize_packed::read_message(buf, ::capnp::message::ReaderOptions::new())?;
+    
+    let reader = message_reader.get_root::<touch_data::Reader>()?;
+
     let mut data = TouchData::default();
-    let mut count = 0;
-    data.width = rmp::decode::read_u16(&mut &buf[count..]).unwrap() as i32;
-    count += 2;
-    data.height = rmp::decode::read_u16(&mut &buf[count..]).unwrap() as i32;
-    count += 3;
-    let size = rmp::decode::read_array_len(&mut &buf[count..]).unwrap();
-    dbg!(size);
-    count += 3;
+
+    data.width = reader.get_width();
+    data.height = reader.get_height();
     data.fingers = [None; 10]; // init all the fields to none
+    
 
-    // if there are more than 10 fingers, return None for all of them, as we can't handle that
-    // windows doesnt support it and we risk trying to read past the buffer bounds
-    if size > 10 {
-        return Ok(data);
-    }
-
-    for _ in 0..size {
+    for finger_reader in reader.get_fingers().iter().enumerate() {
         let mut finger = FingerData::default();
-        let index: usize = rmp::decode::read_u16(&mut &buf[count..]).unwrap() as usize;
-        count += 3;
-        let is_gone = rmp::decode::read_bool(&mut &buf[count..]).unwrap();
-        count += 1;
-        finger.x = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        count += 5;
-        finger.y = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        count += 5;
-        finger.pressure = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        count += 5;
-        finger.orientation = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        count += 5;
-        finger.size = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        count += 5;
-        finger.touch_major = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        count += 5;
-        finger.touch_minor = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
-        if !is_gone {
-            data.fingers[index] = Some(finger);
+        for a in finger_reader.1.iter().enumerate() {
+            let index = a.1.get_id() as usize;
+            finger.x = a.1.get_x();
+            finger.y = a.1.get_y();
+            finger.pressure = a.1.get_pressure();
+            finger.size = a.1.get_size();
+            finger.orientation = a.1.get_orientation();
+            finger.touch_major = a.1.get_touch_major();
+            finger.touch_minor = a.1.get_touch_minor();
+            if (a.1.get_is_present()) {
+                data.fingers[index] = Some(finger);
+            }
         }
     }
     Ok(data)
@@ -137,3 +128,5 @@ struct FingerData {
     pub x: f32,
     pub y: f32,
 }
+
+mod touch_data_capnp;

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.70"
+capnp = { version = "0.16.1", features = ["sync_reader"] }
 rmp = "0.8.11"
 rmp-serde = "1.1.1"
 serde = { version = "1.0.159", features = ["derive"] }
