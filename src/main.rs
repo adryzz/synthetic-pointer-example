@@ -1,7 +1,8 @@
 use std::{
     any,
+    fs::read,
     io::Read,
-    net::{Shutdown, TcpListener, TcpStream}, fs::read,
+    net::{Shutdown, TcpListener, TcpStream},
 };
 
 use capnp::serialize_packed;
@@ -39,7 +40,7 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
                 false
             }
             Ok(size) => {
-                let data: TouchData = touch_data_from_slice(&buf)?;
+                let data: TouchData = touch_data_from_slice(&buf).unwrap_or_default();
                 // this creates errors randomly: fix them lol
                 let mut input: [Option<TouchInput>; 10] = [None; 10];
                 dbg!(&data);
@@ -61,7 +62,6 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
                         } else {
                             input[i] = None;
                         }
-
                     }
                 }
                 pointer.touch_input(&input)?;
@@ -82,7 +82,7 @@ fn map(value: f32, istart: f32, istop: f32, ostart: f32, ostop: f32) -> f32 {
 fn touch_data_from_slice(buf: &[u8]) -> Result<TouchData, anyhow::Error> {
     let message_reader =
         serialize_packed::read_message(buf, ::capnp::message::ReaderOptions::new())?;
-    
+
     let reader = message_reader.get_root::<touch_data::Reader>()?;
 
     let mut data = TouchData::default();
@@ -90,7 +90,6 @@ fn touch_data_from_slice(buf: &[u8]) -> Result<TouchData, anyhow::Error> {
     data.width = reader.get_width();
     data.height = reader.get_height();
     data.fingers = [None; 10]; // init all the fields to none
-    
 
     for finger_reader in reader.get_fingers().iter().enumerate() {
         let mut finger = FingerData::default();
@@ -98,14 +97,16 @@ fn touch_data_from_slice(buf: &[u8]) -> Result<TouchData, anyhow::Error> {
             let index = a.1.get_id() as usize;
             finger.x = a.1.get_x();
             finger.y = a.1.get_y();
-            finger.pressure = a.1.get_pressure();
             finger.size = a.1.get_size();
             finger.orientation = a.1.get_orientation();
             finger.touch_major = a.1.get_touch_major();
             finger.touch_minor = a.1.get_touch_minor();
             if a.1.get_is_present() {
-                data.fingers[index] = Some(finger);
+                finger.pressure = a.1.get_pressure();
+            } else {
+                finger.pressure = 0f32;
             }
+            data.fingers[index] = Some(finger);
         }
     }
     Ok(data)
