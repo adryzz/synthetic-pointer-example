@@ -28,9 +28,9 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
     println!("Connected to {}", stream.peer_addr()?);
 
     let mut buf = [0 as u8; 512];
-    /*let properties =
+    let properties =
         TouchProperties::Pressure | TouchProperties::Orientation | TouchProperties::ContactArea;
-    let mut pointer = SyntheticPointer::new(PointerType::Touch(properties), 10)?;*/
+    let mut pointer = SyntheticPointer::new(PointerType::Touch(properties), 10)?;
 
     Ok(
         while match stream.read(&mut buf) {
@@ -44,7 +44,7 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
                 let mut input: [Option<TouchInput>; 10] = [None; 10];
                 dbg!(&data);
 
-                /*for (i, finger_or_none) in data.fingers.iter().enumerate() {
+                for (i, finger_or_none) in data.fingers.iter().enumerate() {
                     if i < input.len() {
                         if let Some(finger) = finger_or_none {
                             // change these to display resolution
@@ -65,7 +65,7 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
                     }
                 }
                 pointer.touch_input(&input)?;
-                pointer.inject()?;*/
+                pointer.inject()?;
                 true
             }
             Err(e) => {
@@ -103,7 +103,7 @@ fn touch_data_from_slice(buf: &[u8]) -> Result<TouchData, anyhow::Error> {
             finger.orientation = a.1.get_orientation();
             finger.touch_major = a.1.get_touch_major();
             finger.touch_minor = a.1.get_touch_minor();
-            if (a.1.get_is_present()) {
+            if a.1.get_is_present() {
                 data.fingers[index] = Some(finger);
             }
         }
