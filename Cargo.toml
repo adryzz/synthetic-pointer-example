@@ -1,0 +1,13 @@
+[package]
+name = "synthetic-pointer-example"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.70"
+rmp = "0.8.11"
+rmp-serde = "1.1.1"
+serde = { version = "1.0.159", features = ["derive"] }
+win32-synthetic-pointer = "0.1.0"
