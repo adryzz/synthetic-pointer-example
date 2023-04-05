@@ -24,16 +24,16 @@ fn main() -> anyhow::Result<()> {
 fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
     println!("Connected to {}", stream.peer_addr()?);
 
-    let mut buf = [0 as u8; 256];
-    let properties =
+    let mut buf = [0 as u8; 512];
+    /*let properties =
         TouchProperties::Pressure | TouchProperties::Orientation | TouchProperties::ContactArea;
-    let mut pointer = SyntheticPointer::new(PointerType::Touch(properties), 10)?;
+    let mut pointer = SyntheticPointer::new(PointerType::Touch(properties), 10)?;*/
 
     Ok(
         while match stream.read(&mut buf) {
             Ok(0) => {
                 println!("Client Closed connection");
-                true
+                false
             }
             Ok(size) => {
                 let data: TouchData = touch_data_from_slice(&buf)?;
@@ -41,7 +41,7 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
                 let mut input: [Option<TouchInput>; 10] = [None; 10];
                 dbg!(&data);
 
-                for (i, finger_or_none) in data.fingers.iter().enumerate() {
+                /*for (i, finger_or_none) in data.fingers.iter().enumerate() {
                     if i < input.len() {
                         if let Some(finger) = finger_or_none {
                             // change these to display resolution
@@ -62,7 +62,7 @@ fn handle_client(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
                     }
                 }
                 pointer.touch_input(&input)?;
-                pointer.inject()?;
+                pointer.inject()?;*/
                 true
             }
             Err(e) => {
@@ -76,45 +76,58 @@ fn map(value: f32, istart: f32, istop: f32, ostart: f32, ostop: f32) -> f32 {
     return ostart + (ostop - ostart) * ((value - istart) / (istop - istart));
 }
 
-fn touch_data_from_slice(buf: &[u8; 256]) -> Result<TouchData, anyhow::Error> {
+fn touch_data_from_slice(buf: &[u8; 512]) -> Result<TouchData, anyhow::Error> {
     let mut data = TouchData::default();
     let mut count = 0;
-    data.width = rmp::decode::read_int(&mut &buf[..])?;
+    data.width = rmp::decode::read_u16(&mut &buf[count..]).unwrap() as i32;
+    count += 2;
+    data.height = rmp::decode::read_u16(&mut &buf[count..]).unwrap() as i32;
     count += 3;
-    data.height = rmp::decode::read_int(&mut &buf[count..])?;
-    count += 4;
-    let mut finger = FingerData::default();
-    let is_gone = rmp::decode::read_bool(&mut &buf[count..])?;
-    count += 1;
-    finger.x = rmp::decode::read_f32(&mut &buf[count..])?;
-    count += 5;
-    finger.y = rmp::decode::read_f32(&mut &buf[count..])?;
-    count += 5;
-    finger.pressure = rmp::decode::read_f32(&mut &buf[count..])?;
-    count += 5;
-    finger.orientation = rmp::decode::read_f32(&mut &buf[count..])?;
-    count += 5;
-    finger.size = rmp::decode::read_f32(&mut &buf[count..])?;
-    count += 5;
-    finger.touch_major = rmp::decode::read_f32(&mut &buf[count..])?;
-    count += 5;
-    finger.touch_minor = rmp::decode::read_f32(&mut &buf[count..])?;
-    if !is_gone {
-        data.fingers.push(Some(finger));
-    } else {
-        data.fingers.push(None);
+    let size = rmp::decode::read_array_len(&mut &buf[count..]).unwrap();
+    dbg!(size);
+    count += 3;
+    data.fingers = [None; 10]; // init all the fields to none
+
+    // if there are more than 10 fingers, return None for all of them, as we can't handle that
+    // windows doesnt support it and we risk trying to read past the buffer bounds
+    if size > 10 {
+        return Ok(data);
+    }
+
+    for _ in 0..size {
+        let mut finger = FingerData::default();
+        let index: usize = rmp::decode::read_u16(&mut &buf[count..]).unwrap() as usize;
+        count += 3;
+        let is_gone = rmp::decode::read_bool(&mut &buf[count..]).unwrap();
+        count += 1;
+        finger.x = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        count += 5;
+        finger.y = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        count += 5;
+        finger.pressure = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        count += 5;
+        finger.orientation = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        count += 5;
+        finger.size = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        count += 5;
+        finger.touch_major = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        count += 5;
+        finger.touch_minor = rmp::decode::read_f32(&mut &buf[count..]).unwrap();
+        if !is_gone {
+            data.fingers[index] = Some(finger);
+        }
     }
     Ok(data)
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
 struct TouchData {
     pub width: i32,
     pub height: i32,
-    pub fingers: Vec<Option<FingerData>>,
+    pub fingers: [Option<FingerData>; 10],
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
 struct FingerData {
     pub orientation: f32,
     pub pressure: f32,
